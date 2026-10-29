@@ -185,6 +185,95 @@ suite('e2e', function () {
     });
   });
 
+  test('EC-61: a hotel with no Japanese address shows the English one with a hint; Data health lists V-12', function () {
+    var snap = E2E.snapshot(function (raw) { raw.Hotels.values[2][5] = ''; });
+    return E2E.seed({ jst: '2026-11-21T20:00', snapshot: snap }).then(function () { return E2E.load(); }).then(function (w) {
+      return E2E.click(w, '.hotel [data-card="hotel"]').then(function () {
+        var card = w.document.querySelector('#sheet .staff-card');
+        ok(/2-2 Fake, Kyoto/.test(card.querySelector('.ja-addr').textContent), 'English address in its place');
+        ok(/No Japanese address/.test(card.innerText), 'hint says why');
+        return E2E.go(w, '#/health');
+      }).then(function () {
+        has(w, /Japanese address/i, 'V-12 listed in Data health');
+        E2E.screenChecks(w);
+      });
+    });
+  });
+
+  test('EC-15: Japanese text and emoji from the sheet render intact on Today', function () {
+    var snap = E2E.snapshot(function (raw) {
+      raw.Itinerary.values.forEach(function (r) { if (r[5] === 'Fake lunch') r[5] = 'Fake lunch 道頓堀 🍜'; });
+    });
+    return E2E.seed({ jst: '2026-11-20T13:30', snapshot: snap }).then(function () { return E2E.load(); }).then(function (w) {
+      has(w, /Fake lunch 道頓堀 🍜/);
+      ok(!/�/.test(E2E.text(w)), 'no replacement characters');
+    });
+  });
+
+  test('EC-26: the sheet refuses the code (AUTH): "Setup code needed" banner, the saved plan stays', function () {
+    E2E.fetchStub = function () {
+      return Promise.resolve({ status: 200, text: function () { return Promise.resolve(JSON.stringify({ ok: false, api: 1, code: 'AUTH', message: 'Unauthorized' })); } });
+    };
+    return E2E.seed({ jst: '2026-11-20T13:30' }).then(function () { return E2E.load('#/settings'); }).then(function (w) {
+      return E2E.click(w, '[data-action="sync-now"]').then(function () {
+        return new Promise(function (r) { setTimeout(r, 300); });
+      }).then(function () {
+        has(w, /Setup code needed/);
+        return E2E.go(w, '#/today');
+      }).then(function () {
+        has(w, /Day 2 of 8 · Osaka/, 'saved plan still shows');
+        has(w, /Setup code needed/, 'banner stays');
+        E2E.screenChecks(w);
+      });
+    });
+  });
+
+  test('EC-36 / DQ-10: Large Text (23 px, and 33 px bold) never scrolls sideways or pushes a control off screen; normal size keeps headers on one row', function () {
+    var routes = ['#/today', '#/trip', '#/lists', '#/budget', '#/nearby', '#/info', '#/settings', '#/expense/new', '#/calc', '#/health',
+      '#/print', '#/day/2026-11-20', '#/item/it_a4', '#/list/Departure%20day'];
+    var sizes = [[17, false], [23, false], [33, true]];
+    var jobs = [];
+    sizes.forEach(function (sz) { routes.forEach(function (h) { jobs.push([sz[0], sz[1], h]); }); });
+    return jobs.reduce(function (p, j) {
+      return p.then(function () {
+        return E2E.seed({ jst: '2026-11-21T20:00', owner: 'Lindsay', snapshot: E2E.snapshot(E2E.withLists) }).then(function () { return E2E.load(j[2]); }).then(function (w) {
+          var st = w.document.createElement('style');
+          st.textContent = 'html{font-size:' + j[0] + 'px !important}' + (j[1] ? ' *{font-weight:700 !important}' : '');
+          w.document.head.appendChild(st);
+          return new Promise(function (r) { setTimeout(r, 120); }).then(function () {
+            var tag = j[2] + ' at ' + j[0] + 'px' + (j[1] ? ' bold' : '');
+            ok(w.document.documentElement.scrollWidth <= w.innerWidth, tag + ': page is ' + w.document.documentElement.scrollWidth + ' wide');
+            var back = w.document.querySelector('.topbar > .back'), cards = w.document.querySelector('.topbar > .cards-btn');
+            if (j[0] === 17 && back && cards) ok(Math.abs(back.getBoundingClientRect().top - cards.getBoundingClientRect().top) < 10, tag + ': back and Cards share one row at normal size');
+            [].forEach.call(w.document.querySelectorAll('#main a[href], #main button, #main input, #main select, .topbar button, .tabbar a'), function (e) {
+              var r = e.getBoundingClientRect();
+              if (r.width && !e.closest('.jump, .chips, .filters')) ok(r.right <= w.innerWidth + 1, tag + ': ' + e.tagName + ' "' + (e.innerText || '').trim().slice(0, 20) + '" ends at ' + Math.round(r.right));
+            });
+          });
+        });
+      });
+    }, Promise.resolve());
+  });
+
+  test('§15 print fallback: Trip links to a printable itinerary with every day, Japanese addresses and a hotels page; print hides the app chrome', function () {
+    return E2E.seed({ jst: '2026-11-21T20:00' }).then(function () { return E2E.load('#/trip'); }).then(function (w) {
+      return E2E.click(w, 'a[href="#/print"]').then(function () {
+        var d = w.document, pr = d.querySelector('.printable');
+        eq(d.querySelectorAll('.p-day:not(.p-hotels)').length, w.BT.model.tripDays(w.BT.app.state.vm).length, 'one section per trip day');
+        ok(/大阪府テスト1-1/.test(pr.innerText) && /京都府テスト2-2/.test(pr.innerText), 'Japanese hotel addresses');
+        ok(/テスト市場/.test(pr.innerText), 'Japanese place names');
+        ok(d.querySelector('.p-hotels'), 'hotels page for drivers');
+        ok(d.querySelector('[data-action="print"]'), 'print button');
+        var printRules = [].concat.apply([], [].map.call(d.styleSheets, function (sh) {
+          try { return [].filter.call(sh.cssRules, function (r) { return r.media && /print/.test(r.media.mediaText); }); } catch (e) { return []; }
+        })).map(function (r) { return r.cssText; }).join('\n');
+        ['.topbar', '.tabbar', '.banners', '.no-print'].forEach(function (sel) { ok(printRules.indexOf(sel) >= 0, 'print hides ' + sel); });
+        ok(/#000\b|rgb\(0, 0, 0\)/.test(printRules) && /#fff\b|rgb\(255, 255, 255\)/.test(printRules), 'prints black on white');
+        E2E.screenChecks(w);
+      });
+    });
+  });
+
   test('booking ref card groups digits in fours', function () {
     return E2E.seed({ jst: '2026-11-21T20:00' }).then(function () { return E2E.load('#/info'); }).then(function (w) {
       return E2E.click(w, '[data-card="ref"][data-kind="hotel"]').then(function () {

@@ -198,6 +198,21 @@ suite('outbox', function () {
     });
   });
 
+  test('EC-25: quota or internal script error during push: ops kept, "Couldn\'t sync · will retry", retry scheduled', function () {
+    var store = memStore();
+    var script = fakeScript({ mutate: function () { return { ok: false, api: 1, code: 'INTERNAL', message: 'Service invoked too many times' }; } });
+    return withFetch(script, function () {
+      return ready(store).then(function (s) {
+        return tick(s).then(function () { s.scheduled.length = 0; return s.sync(); }).then(function () {
+          eq(Object.keys(store.d.outbox).length, 1);
+          eq(s.status().state, 'problem');
+          eq(BT.sync.describe(s.status()).text, 'Couldn\'t sync · will retry');
+          deepEq(s.scheduled, [2000], 'retry on the normal backoff');
+        });
+      });
+    });
+  });
+
   test('an old script without mutate (BAD_REQUEST) keeps the ops and says it couldn\'t sync', function () {
     var store = memStore();
     var script = fakeScript({ snapshot: function () { return snapshotReply(); }, mutate: function () { return { ok: false, api: 1, code: 'BAD_REQUEST', message: 'Unknown action' }; } });

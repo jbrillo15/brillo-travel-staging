@@ -4,7 +4,7 @@
    skips waiting on its own. The cache is named brillo-<env>-<version>, and
    this env's worker only deletes its own old caches (staging and prod share
    one origin). VERSION must match js/config.js and CHANGELOG.md. */
-var VERSION = '0.4.5';
+var VERSION = '0.4.6';
 var ENV = /\/brillo-travel\//.test(self.location.pathname) ? 'prod' : 'staging';
 var PREFIX = 'brillo-' + ENV + '-';
 var CACHE = PREFIX + VERSION;

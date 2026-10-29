@@ -4,6 +4,11 @@ Versions follow semantic versioning. 0.x during the build; 1.0.0 is the trip
 release. The version here must match `js/config.js` and the service worker
 cache name (a unit test checks this).
 
+## 0.4.6
+
+- **Printable itinerary.** The bottom of the Trip screen has a new "Printable itinerary" link. It shows every day of the trip on one page (flights, plans with times, places in English and Japanese, how to get there, bookings, allergy notes, and the hotel each night), plus a last page of hotels in large Japanese for taxi drivers. "Print or save as PDF" prints it black on white with no app buttons; in the iPhone print screen, pinch out on the preview to save it as a PDF.
+- **Large text.** With a large iOS Text Size, Settings no longer scrolls sideways, and screen headers, the add-expense amount, long category buttons and the tab labels stay on screen (they wrap instead). Nothing changes at the normal size.
+
 ## 0.4.5
 
 The Phrases button in the Cards header is bright lime instead of white, so it stands out.

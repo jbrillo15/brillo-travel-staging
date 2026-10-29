@@ -110,6 +110,25 @@ suite('budget', function () {
     eq(B.shopping(list, Object.assign({}, S, { shoppingBudget: null }), R).left, null);
   });
 
+  test('EC-53: tax-free purchase Pending → Received at Haneda; the refund entry reduces Shopping', function () {
+    var buy = ex({ envelope: 'Shopping', category: 'Shopping', amount: 22000, taxFree: true, refundStatus: 'Pending' });
+    var s = B.shopping([buy], S, R);
+    eq(s.pendingRefunds, 1); eq(s.spent, 22000);
+    var got = [Object.assign({}, buy, { refundStatus: 'Received' }), ex({ envelope: 'Shopping', category: 'Tax refund', amount: 2000, tripDate: '2026-11-26' })];
+    s = B.shopping(got, S, R);
+    eq(s.pendingRefunds, 0, 'Received is no longer pending');
+    eq(s.spent, 20000); eq(s.refunds, 2000);
+    eq(B.daily(got, S, '2026-11-26', R).spentTotal, 0, 'never touches Daily');
+  });
+
+  test('EC-52: a Suica top-up is Transit spending in Daily, and a cash top-up leaves the wallet', function () {
+    eq(B.envelopeFor('Transit'), 'Daily');
+    var list = [ex({ category: 'Transit', amount: 5000, method: 'Cash', note: 'Suica top-up' })];
+    var d = B.daily(list, S, '2026-11-21', R);
+    eq(d.spentToday, 5000);
+    eq(B.cash(list, S, R).onHand, 50000 - 5000, 'a cash top-up leaves the wallet');
+  });
+
   test('EC-57 / AC-B6: live rate, else the cached rate with its date, else the fallback, labelled', function () {
     var live = B.rate({ fxLive: 152.4, fxFallback: 158.3 }, null, '2026-11-21T03:00:00Z');
     eq(live.source, 'live'); eq(live.rate, 152.4); eq(live.date, '2026-11-21');

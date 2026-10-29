@@ -24,7 +24,7 @@
             <span class="secondary">${items.length ? items[0].title + (items.length > 1 ? ' + ' + (items.length - 1) + ' more' : '') : 'Nothing planned yet'}</span>
             ${hotel ? html`<span class="secondary">${D.icon('p-bed', 'inline-pict')}${hotel.nameEn}</span>` : ''}
           </span><span class="chev" aria-hidden="true">›</span></a></li>`;
-      })}</ul>` : html`<p class="empty">No trip dates yet. They come from the Settings tab in the sheet.</p>`
+      })}</ul>${days.length ? html`<a class="card-link" href="#/print">Printable itinerary</a>` : ''}` : html`<p class="empty">No trip dates yet. They come from the Settings tab in the sheet.</p>`
     };
   }
 
@@ -79,5 +79,58 @@
     };
   }
 
-  BT.ui.trip = { list: dayList, day: dayDetail, item: itemDetail };
+  // Printable itinerary (HANDOFF §15 PDF fallback): every day on one page, Japanese
+  // addresses included, plus a last page of hotels for taxi drivers. css/app.css
+  // @media print strips the app chrome and prints it black on white.
+  function printable(S) {
+    var vm = S.vm, s = vm.settings;
+    var days = M.tripDays(vm);
+    function kv(label, value, ja) { return value ? html`<div class="p-kv"><span class="p-label">${label}</span><span${ja ? D.raw(' class="ja" lang="ja"') : ''}>${value}</span></div>` : ''; }
+    function leg(l) {
+      return html`<li class="p-leg"><b>${l.number ? l.number + ' · ' : ''}${l.from} → ${l.to}</b>
+        <span>Departs ${l.departInstant ? T.fmtInstant(l.departInstant, l.departTz) : l.departDate}${l.departTz ? ' (' + T.zoneLabel(l.departTz) + ')' : ''}
+          · Arrives ${l.arriveInstant ? T.fmtInstant(l.arriveInstant, l.arriveTz) : l.arriveDate}${l.arriveTz ? ' (' + T.zoneLabel(l.arriveTz) + ')' : ''}</span>
+        ${kv('Booking #', l.booking)}${kv('Notes', l.notes)}</li>`;
+    }
+    function hotelBlock(h, label) {
+      return html`<div class="p-hotel"><span class="p-label">${label}</span>
+        <b>${h.nameEn}</b>${h.nameJa ? html` <span class="ja" lang="ja">${h.nameJa}</span>` : ''}
+        ${kv('Address', h.addressEn)}${kv('住所', h.addressJa, true)}${kv('Phone', h.phone)}
+        ${kv('Check-in', h.checkInTime ? T.fmtDay(h.checkIn) + ', ' + T.fmtClock(h.checkInTime) : '')}
+        ${kv('Check-out', h.checkOutTime ? T.fmtDay(h.checkOut) + ', ' + T.fmtClock(h.checkOutTime) : '')}
+        ${kv('Confirmation #', h.confirmation)}</div>`;
+    }
+    var body = html`
+      <p class="no-print"><button class="btn btn-primary" type="button" data-action="print">Print or save as PDF</button></p>
+      <p class="no-print hint">In the print screen, pinch out on the preview to save it as a PDF.</p>
+      <h1 class="p-title">${s.tripName || 'Trip itinerary'}</h1>
+      <p class="p-sub">Printed ${T.fmtInstant(T.now(), s.homeTz || s.tripTz || 'Asia/Tokyo')} · plan times are local</p>
+      ${days.map(function (d) {
+        var city = M.cityFor(vm, d), n = T.dayNumber(d, s), items = vm.byDate[d] || [];
+        var hotel = M.tonightHotel(vm, d), out = M.checkoutHotel(vm, d), legs = M.legsOn(vm, d);
+        return html`<section class="p-day">
+          <h2>${T.fmtDay(d)}${n && n.n > 0 ? ' · Day ' + n.n + ' of ' + n.total : ''} · ${city}${M.cityJa(city) ? html` <span class="ja" lang="ja">${M.cityJa(city)}</span>` : ''}</h2>
+          ${legs.length ? html`<ul class="p-legs">${legs.map(leg)}</ul>` : ''}
+          ${items.length ? html`<ol class="p-items">${items.map(function (it) {
+            return html`<li><span class="p-when">${P.whenLabel(it)}</span><div>
+              <b>${it.title}</b>${it.about ? html`<div class="p-about">${it.about}</div>` : ''}
+              ${kv('Place', it.placeEn)}${kv('場所', it.placeJa, true)}${kv('Getting there', it.gettingThere)}
+              ${kv('Booking', it.bookingStatus && it.bookingStatus !== 'Not needed' ? it.bookingStatus + (it.bookingRef ? ' · ' + it.bookingRef : '') : '')}
+              ${it.allergyRisk && it.allergyRisk !== 'None' ? kv('Allergy', it.allergyRisk) : ''}${kv('Notes', it.notes)}
+            </div></li>`;
+          })}</ol>` : html`<p class="p-empty">Nothing planned.</p>`}
+          ${out && out !== hotel ? hotelBlock(out, 'Check out') : ''}
+          ${hotel ? (hotel.checkIn === d ? hotelBlock(hotel, 'Check in') : kv('Hotel', hotel.nameEn + (hotel.nameJa ? ' · ' + hotel.nameJa : ''))) : ''}
+        </section>`;
+      })}
+      ${vm.hotels && vm.hotels.length ? html`<section class="p-day p-hotels"><h2>Hotels · show the driver</h2>${vm.hotels.map(function (h) {
+        return html`<div class="p-hotel"><b>${h.nameEn}</b> · ${T.fmtDay(h.checkIn)} – ${T.fmtDay(h.checkOut)}
+          ${h.nameJa ? html`<div class="ja p-big" lang="ja">${h.nameJa}</div>` : ''}
+          ${h.addressJa ? html`<div class="ja p-big" lang="ja">${h.addressJa}</div>` : kv('Address', h.addressEn)}
+          ${kv('Station', h.station)}${kv('Phone', h.phone)}${kv('Confirmation #', h.confirmation)}</div>`;
+      })}</section>` : ''}`;
+    return { city: null, header: D.plainHeader('Printable itinerary', { back: D.backLink('#/trip', 'Trip') }), body: html`<div class="printable">${body}</div>` };
+  }
+
+  BT.ui.trip = { list: dayList, day: dayDetail, item: itemDetail, printable: printable };
 })();

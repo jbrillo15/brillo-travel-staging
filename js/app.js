@@ -21,7 +21,7 @@
     var name = parts[0] || 'today';
     var arg = null;
     try { arg = parts[1] ? decodeURIComponent(parts[1]) : null; } catch (e) { arg = parts[1]; }
-    var tab = { today: 'today', info: 'today', settings: 'today', health: 'today', trip: 'trip', day: 'trip', item: 'trip',
+    var tab = { today: 'today', info: 'today', settings: 'today', health: 'today', trip: 'trip', day: 'trip', item: 'trip', print: 'trip',
       lists: 'lists', list: 'lists', check: 'lists', 'sync-issues': 'lists', budget: 'budget', expense: 'budget', calc: 'budget', nearby: 'nearby' }[name] || 'today';
     return { name: name, arg: arg, tab: tab };
   }
@@ -31,6 +31,7 @@
       case 'trip': return BT.ui.trip.list(S);
       case 'day': return BT.ui.trip.day(S, r.arg);
       case 'item': return BT.ui.trip.item(S, r.arg);
+      case 'print': return BT.ui.trip.printable(S);
       case 'info': return BT.ui.info.render(S);
       case 'settings': return BT.ui.settings.render(S);
       case 'health': return BT.ui.settings.health(S);
@@ -535,6 +536,8 @@
     } else if (a === 'delete-expense') {
       if (!confirm('Delete this expense on both phones? It stays in the sheet, marked Deleted.')) return;
       change('expense.delete', el.getAttribute('data-id'), {}).then(function (op) { if (op) location.hash = '#/budget'; });
+    } else if (a === 'print') {
+      window.print();
     } else if (a === 'export-csv') {
       exportCsv();
     } else if (a === 'calc-log') {

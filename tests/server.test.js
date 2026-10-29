@@ -349,6 +349,27 @@ suite('server', function () {
     eq(e.amount, 1300); eq(e.deleted, true);
   });
 
+  test('EC-22: both phones log an expense in the same second: both rows are written', function () {
+    STUB.reset(tabs());
+    var f = { tripDate: '2026-11-21', amount: 1200, currency: 'JPY', envelope: 'Daily', category: 'Food', method: 'Cash', paidBy: 'Lindsay', note: 'ramen', taxFree: false };
+    var a = STUB.post({ token: STUB.token(), action: 'mutate', device: 'lindsay-iphone', appVersion: '0.2.0', ops: [op('expense.upsert', 'ex_lin00001', f, at(1))] });
+    var b = STUB.post({ token: STUB.token(), action: 'mutate', device: 'jordan-iphone', appVersion: '0.2.0',
+      ops: [op('expense.upsert', 'ex_jor00001', Object.assign({}, f, { paidBy: 'Jordan', amount: 900 }), at(1))] });
+    eq(a.results[0].status, 'applied'); eq(b.results[0].status, 'applied');
+    eq(cell('Expenses', 'ex_lin00001', 'Device'), 'lindsay-iphone');
+    eq(cell('Expenses', 'ex_jor00001', 'Device'), 'jordan-iphone');
+    eq(cell('Expenses', 'ex_jor00001', 'Amount'), 900);
+    eq(snap().data.expenses.filter(function (x) { return /^ex_(lin|jor)00001$/.test(x.id); }).length, 2);
+  });
+
+  test('EC-57: a live FX cell showing #N/A comes through as no rate; the fallback still arrives', function () {
+    STUB.reset(tabs());
+    var s = snap();
+    eq(s.ok, true);
+    eq(s.data.settings.fxLive, null);
+    eq(s.data.settings.fxFallback, 158.3);
+  });
+
   test('idea.add / idea.update and itinerary.setDone', function () {
     STUB.reset(tabs());
     eq(mutate([op('idea.add', 'id_abc123', { nameEn: 'Fake café', category: 'Café', city: 'Kyoto', status: 'Idea' }, at(1))]).results[0].status, 'applied');
